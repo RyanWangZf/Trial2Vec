@@ -1,0 +1,10 @@
+datasets
+joblib
+nltk
+numpy
+pandas
+textaugment
+tqdm
+transformers
+wget
+openpyxl
