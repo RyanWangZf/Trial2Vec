@@ -62,3 +62,28 @@ emb = model.encode(test_data) # make inference
 emb = [model[nct_id] for test_data['x']['nct_id']]
 ```
 
+# Continue training
+
+One can continue to train the pretrained models on new trials as
+
+```python
+
+# just formulate trial documents as the format of `data`
+data = load_demo_data()
+
+model.fit(
+    {
+    'x':data['x'], # document dataframe
+    'fields':data['fields'], # attribute field columns
+    'ctx_fields':data['ctx_fields'], # context field columns
+    'tag': data['tag'], # nct_id is the unique tag for each trial
+    },
+    valid_data={
+            'x':data['x_val'],
+            'y':data['y_val']
+        },
+)
+
+```
+
+
