@@ -84,6 +84,9 @@ model.fit(
         },
 )
 
+# save
+model.save_model('./finetuned-trial2vec')
+
 ```
 
 
