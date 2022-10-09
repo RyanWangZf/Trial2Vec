@@ -1,7 +1,7 @@
 # Trial2Vec
-Findings of EMNLP'22 | Trial2Vec: Zero-Shot Clinical Trial Document Similarity Search using Self-Supervision
+Wang, Zifeng and Sun, Jimeng. (2022). Trial2Vec: Zero-Shot Clinical Trial Document Similarity Search using Self-Supervision. Findings of EMNLP'22.
 
-# Useage
+# Usage
 Get pretrained Trial2Vec model in three lines:
 
 ```python
@@ -23,13 +23,26 @@ pip install git+https://github.com/RyanWangZf/Trial2Vec.git
 
 ```
 
+or
+```bash
+
+pip install trial2vec
+
+```
+
 # Search similar trials
 Use `Trial2Vec` to search similar clinical trials:
 
 ```python
 
-test_data = {'x': df} # contains trial documents
+# load demo data
+from trial2vec import load_demo_data
+data = load_demo_data()
 
+# contains trial documents
+test_data = {'x': data['x']} 
+
+# make prediction
 pred = model.predict(test_data)
 ```
 
