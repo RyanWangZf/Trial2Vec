@@ -12,6 +12,8 @@ model = Trial2Vec()
 model.from_pretrained()
 ```
 
+A jupyter example is shown at https://github.com/RyanWangZf/Trial2Vec/blob/main/example/demo_trial2vec.ipynb.
+
 # How to install
 Install the correct `PyTorch` version by referring to https://pytorch.org/get-started/locally/.
 
