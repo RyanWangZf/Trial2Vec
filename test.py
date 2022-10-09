@@ -10,3 +10,8 @@ emb = model['NCT01327170']
 print(emb)
 print(emb.shape)
 
+data = load_demo_data('./demo_data')
+print(data)
+
+res = model.predict(data, return_df=True)
+print(res)

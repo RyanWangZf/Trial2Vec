@@ -16,7 +16,6 @@ import transformers
 from torch.utils.data import DataLoader
 from torch import nn
 from transformers import AutoModel, AutoTokenizer
-from datasets import load_dataset
 from datasets import Dataset
 from tqdm import tqdm
 
@@ -29,15 +28,16 @@ from .data import TrialSearchCollator, batch_to_device
 from .metrics import precision, recall, ndcg
 
 # may be changed later
-PRETRAINED_TRIAL2VEC_URL = 'https://uofi.box.com/shared/static/kt2nl4ktotsn8japqubhxqsyp0dzcizl.zip'
+PRETRAINED_TRIAL2VEC_URL = 'https://uofi.box.com/shared/static/wmvi33l3ne4hl88lui0h0v2l2j75smyb.zip'
 
 class BuildModel(nn.Module):
+    config = {}
     def __init__(self,
         model_name,
         emb_dim,
-        attr_fields,
-        ctx_fields,
-        device,
+        fields=None,
+        ctx_fields=None,
+        device=None,
         ) -> None:
         super().__init__()
         self.device = device
@@ -49,8 +49,8 @@ class BuildModel(nn.Module):
             num_heads=6,
             batch_first=False, # [seq, batch, feature]
         )
-        self.attr_fields = attr_fields
-        self.ctx_fields = ctx_fields
+        self.config['fields'] = fields
+        self.config['ctx_fields'] = ctx_fields
 
     def forward(self, inputs, return_local_emb=True):
         '''
@@ -58,25 +58,28 @@ class BuildModel(nn.Module):
         (2) Go through multihead att over the component embds.
         (3) Apply local and global proj head to get each component embds
         and global trial embds.
+
         Parameters
         ----------
         inputs: dict[dict]
             A dict of input components after tokenized.
             E.g., inputs['title'] are the tokenized title texts,
             w/ keys like input_ids, attention_mask, etc.
+
         Returns
         -------
         local_embs: dict[Tensor]
             A dict of all component embds.
+
         global_embs: Tensor
             The trial-level embeds.
         '''
         local_embs = {}
 
-        attr_fields = self.attr_fields
-        ctx_fields = self.ctx_fields
+        fields = self.config['fields']
+        ctx_fields = self.config['ctx_fields']
 
-        attr_embs = self._encode_fields(attr_fields, inputs, local_embs) # num_attr, bs, emb_dim
+        attr_embs = self._encode_fields(fields, inputs, local_embs) # num_attr, bs, emb_dim
 
         ctx_embs = self._encode_fields(ctx_fields, inputs, local_embs) # num_ctx, bs, emb_dim
 
@@ -130,7 +133,7 @@ class LocalMatchCollator(TrialSearchCollator):
     def __init__(self,
         bert_name,
         max_seq_length,
-        attr_fields,
+        fields,
         ctx_fields,
         tag_field=None,
         is_train=True,
@@ -140,7 +143,7 @@ class LocalMatchCollator(TrialSearchCollator):
             bert_name=bert_name,
             max_seq_length=max_seq_length,
         )
-        self.attr_fields = attr_fields
+        self.fields = fields
         self.ctx_fields = ctx_fields
         self.tag_field = tag_field
         self.is_train = is_train
@@ -161,14 +164,14 @@ class LocalMatchCollator(TrialSearchCollator):
         batch_df = pd.DataFrame(features)
         batch_df.fillna('', inplace=True)
 
-        attr_fields = self.attr_fields
+        fields = self.fields
         ctx_fields = self.ctx_fields
 
         if self.is_train:
-            attr_fields = self._random_sample(attr_fields)
+            fields = self._random_sample(fields)
             ctx_fields = self._random_sample(ctx_fields)
 
-        return_dict.update(self._batch_tokenize(batch_df=batch_df, fields=attr_fields))
+        return_dict.update(self._batch_tokenize(batch_df=batch_df, fields=fields))
         return_dict.update(self._batch_tokenize(batch_df=batch_df, fields=ctx_fields))
 
         if self.tag_field is not None:
@@ -178,10 +181,12 @@ class LocalMatchCollator(TrialSearchCollator):
     def _batch_tokenize(self, batch_df, fields):
         return_dict = {}
         for field in fields:
+
             if self.is_train:
                 texts = self._eda_augment(batch_df[field])
             else:
                 texts = batch_df[field].tolist()
+
             tokenized = self.tokenizer(texts, padding=True, truncation=True, max_length=self.max_length, return_tensors='pt')
             return_dict[field] = tokenized
         return return_dict
@@ -206,15 +211,15 @@ class LocalMatchLoss(InfoNCELoss):
     '''
     Match local attribute embeddings and trial-level global embeddings.
     '''
-    def __init__(self, model, attr_fields, logit_scale_init_value):
+    def __init__(self, model, fields, logit_scale_init_value):
         super().__init__(model=model, logit_scale_init_value=logit_scale_init_value)
-        self.attr_fields = attr_fields
+        self.fields = fields
 
     def forward(self, inputs):
         outputs = self.model(inputs)
         embs = outputs['global_embs']
-        attr_fields = [f for f in self.attr_fields if f in outputs['local_embs']]
-        field = np.random.choice(attr_fields,1)[0]
+        fields = [f for f in self.fields if f in outputs['local_embs']]
+        field = np.random.choice(fields,1)[0]
         local_embs = outputs['local_embs'][field]
         logits_per_trial = self.compute_logits(embs, local_embs)
         logits_per_attr = logits_per_trial.t()
@@ -225,7 +230,7 @@ class GlobalMatchCollator(LocalMatchCollator):
     def __init__(self,
         bert_name,
         max_seq_length,
-        attr_fields,
+        fields,
         ctx_fields,
         tag_field=None,
         is_train=True,
@@ -234,7 +239,7 @@ class GlobalMatchCollator(LocalMatchCollator):
         super().__init__(
             bert_name=bert_name,
             max_seq_length=max_seq_length,
-            attr_fields=attr_fields,
+            fields=fields,
             ctx_fields=ctx_fields,
             tag_field=tag_field,
             is_train=is_train,
@@ -246,12 +251,12 @@ class GlobalMatchCollator(LocalMatchCollator):
         batch_df = pd.DataFrame(features)
         batch_df.fillna('', inplace=True)
 
-        attr_fields = self.attr_fields
+        fields = self.fields
         ctx_fields = self.ctx_fields
 
         # process to get anchor
         if self.is_train:
-            attr_fields = self._random_sample(attr_fields)
+            fields = self._random_sample(fields)
             ctx_fields = self._random_sample(ctx_fields)
             
         if random.random() > 0.5: 
@@ -261,18 +266,18 @@ class GlobalMatchCollator(LocalMatchCollator):
             ctx_inputs = self._batch_tokenize(batch_df=batch_df, fields=ctx_fields)
 
         # anchor is attr+ctx
-        return_dict['anchor'] = self._batch_tokenize(batch_df=batch_df, fields=attr_fields)
+        return_dict['anchor'] = self._batch_tokenize(batch_df=batch_df, fields=fields)
         return_dict['anchor'].update(ctx_inputs)
 
         # positive is attr+ctx
-        return_dict['pos'] = self._batch_tokenize(batch_df=batch_df, fields=attr_fields)
+        return_dict['pos'] = self._batch_tokenize(batch_df=batch_df, fields=fields)
         return_dict['pos'].update(ctx_inputs)
 
         # negative is attr'+ctx
         # process to get negative by random shuffling attr field texts
-        sub_attr_fields = self._random_sample(attr_fields)
-        batch_df[sub_attr_fields] = batch_df[sub_attr_fields].sample(frac=1).reset_index(drop=True)
-        return_dict['neg'] = self._batch_tokenize(batch_df=batch_df, fields=attr_fields)
+        sub_fields = self._random_sample(fields)
+        batch_df[sub_fields] = batch_df[sub_fields].sample(frac=1).reset_index(drop=True)
+        return_dict['neg'] = self._batch_tokenize(batch_df=batch_df, fields=fields)
         return_dict['neg'].update(ctx_inputs)
 
         if self.tag_field is not None:
@@ -283,9 +288,9 @@ class GlobalMatchLoss(InfoNCELoss):
     '''
     Match positive trials (by replacing trial components).
     '''
-    def __init__(self, model, attr_fields, logit_scale_init_value):
+    def __init__(self, model, fields, logit_scale_init_value):
         super().__init__(model=model, logit_scale_init_value=logit_scale_init_value)
-        self.attr_fields = attr_fields
+        self.fields = fields
 
     def forward(self, inputs):
         outputs_pos = self.model(inputs['pos'], return_local_emb=False)
@@ -383,48 +388,73 @@ class Trial2VecTrainer(Trainer):
 class Trial2Vec(TrialSearchBase):
     '''
     Implement the Trial2Vec model for trial document similarity search.
+
+    References: Wang, Z., & Sun, J. (2022). Trial2Vec: Zero-Shot Clinical Trial Document Similarity Search using Self-Supervision. Findings of EMNLP 2022.
+
     Parameters
     ----------
+    fields: list[str]
+        A list of fields of documents used as the `attribute` fields by Trial2Vec model.
+
+    ctx_fields: list[str]
+        A list of fields of documents used as the `context` fields by Trial2Vec model.
+
+    tag_field: str
+        The tag indicating trial documents, default to be 'nct_id'.
+
     bert_name: str (default='emilyalsentzer/Bio_ClinicalBERT')
         The base transformer-based encoder. Please find model names
         from the model hub of transformers (https://huggingface.co/models).
+
     emb_dim: int, optional (default=768)
         Dimensionality of the embedding vectors.
+
     logit_scale_init_value: float, optional (default=0.07)
         The logit scale or the temperature.
+
     max_seq_length: int (default=128)
         The maximum length of input tokens for the base encoder.
+
     epochs: int, optional (default=10)
         Number of iterations (epochs) over the corpus. Defaults to 10 for Doc2Vec.
+
     batch_size: int, optional (default=64)
         Number of samples in each training batch.
+
     learning_rate: float, optional (default=3e-5)
         The learning rate.
+
     weight_decay: float, optional (default=1e-4)
         Weight decay applied for regularization.
+
     warmup_ratio: float (default=0)
         How many steps used for warmup training. If set 0, not warmup.
+
     evaluation_steps: int (default=10)
         How many iterations while we print the training loss and
         conduct evaluation if evaluator is given.
+
     num_workers: int, optional (default=0)
         Use these many worker threads to train the model (=faster training with multicore machines).
+
     device: str or torch.device (default='cuda:0')
         The device to put the model on.
+
     use_amp: bool (default=False)
         Whether or not use mixed precision training.
+
     experiment_id: str, optional (default='test')
         The name of current experiment.
     '''
-    tag_field = None
-    attr_fields = []
-    ctx_fields = []
     trial_embs = {}
     val_doc_inputs = None
 
     def __init__(self,
+        fields=None,
+        ctx_fields=None,
+        tag_field='nct_id',
         bert_name='emilyalsentzer/Bio_ClinicalBERT',
-        emb_dim=768,
+        emb_dim=128,
         logit_scale_init_value=0.07,
         max_seq_length=128,
         epochs=10,
@@ -453,6 +483,9 @@ class Trial2Vec(TrialSearchBase):
             'device':device,
             'use_amp':use_amp,
             'warmup_ratio':warmup_ratio,
+            'tag_field':tag_field,
+            'fields':fields,
+            'ctx_fields':ctx_fields,
         }
         self.tokenizer = AutoTokenizer.from_pretrained(bert_name)
         if num_workers > 1:
@@ -461,8 +494,11 @@ class Trial2Vec(TrialSearchBase):
         self.use_amp = use_amp
         self.device = device if isinstance(device, str) else 'cuda:0'
 
+        self._build_model()
+
     def fit(self, train_data, valid_data=None):
         '''Train the trial2vec model to get document embeddings for trial search.
+
         Parameters
         ----------
         train_data: {
@@ -478,13 +514,15 @@ class Trial2Vec(TrialSearchBase):
             the model will only learn from `fields`.
             `tag`: optional, the field in `x` that serves as unique identifiers. Typically it
             is the `nct_id` of each trial. If not given, the model takes integer tags.
+
         valid_data: {'x':pd.DataFrame 'y':np.ndarray}.
             Validation data used for identifying the best checkpoint during the training.
             Need to rewrite the function:
             `get_val_dataloader`.
+
         '''
         self._input_data_check(train_data)
-        self._build_model(train_data, val_data=valid_data)
+        self._fit(train_data, val_data=valid_data)
 
     def encode(self,
         inputs,
@@ -495,6 +533,7 @@ class Trial2Vec(TrialSearchBase):
         ):
         '''
         Encode input documents and output the document embeddings.
+
         Parameters
         ----------
         inputs: {
@@ -507,16 +546,20 @@ class Trial2Vec(TrialSearchBase):
                 `fit` function.
                 If `fields`, `ctx_fields`, `tag` are not given,
                 will reuse the ones used during training.
+
         batch_size: int, optional
             The batch size when encoding trials.
         
         num_workers: int, optional
             The number of workers when building the val dataloader.
+
         return_dict: bool
             If set True, return dict[np.ndarray].
             Else, return np.ndarray with the order same as the input documents.
+
         verbose: bool
             Whether plot progress bar or not.
+
         Returns
         -------
         embs: dict[np.ndarray]
@@ -532,6 +575,9 @@ class Trial2Vec(TrialSearchBase):
 
         # build dataset and dataloader
         dataloader = self.get_val_dataloader(inputs)
+
+        # i = iter(dataloader)
+        # res = next(i)
 
         # go through dataloader and encode trial embds
         emb_list = []
@@ -573,6 +619,7 @@ class Trial2Vec(TrialSearchBase):
         return_df=True):
         '''
         Predict the top-k relevant for input documents.
+
         Parameters
         ----------
         test_data: {
@@ -585,27 +632,37 @@ class Trial2Vec(TrialSearchBase):
                 `fit` function.
                 If `fields`, `ctx_fields`, `tag` are not given,
                 will reuse the ones used during training.
+
         top_k: int
             Number of retrieved candidates.
+
         return_df: float
             If return dataframe for the computed similarity ranking.
             If set True, return (rank, sim);
             else, return rank_list=[[(doc1,sim1),(doc2,sim2)], [(doc1,sim1),...]].
+
         Returns
         -------
         rank: pd.DataFrame
             A dataframe contains the top ranked NCT ids for each.
+
         sim: pd.DataFrame
             A dataframe contains the corresponding similarities.
+
         rank_list: list[list[tuple]]
             A list of tuples of top ranked docs and similarities.
         '''
         self._input_data_check(test_data)
+        
+        tag_field = self.config['tag_field']
 
         all_embs = np.stack(self.trial_embs.values())
         all_tags = np.stack(self.trial_embs.keys())
-        tags, embs = self.encode(test_data, return_dict=False)
 
+        # TODO: skip encoding those already stored in model
+        # to_encode_test_trial = test_trial[~test_trial[tag_field].isin(all_tags)]
+        tags, embs = self.encode(test_data, return_dict=False)
+        
         # rank for each test document
         sim = embs.dot(all_embs.T)
         rank = np.argsort(sim, 1)[:,::-1] # flip
@@ -634,12 +691,15 @@ class Trial2Vec(TrialSearchBase):
     def evaluate(self, test_data):
         '''
         Evaluate within the given trial and corresponding candidate trials.
+
         x =
         | target_trial | trial1 | trial2 | trial3 |
         | nct01        | nct02  | nct03  | nct04  |
+
         y =
         | label1 | label2 | label3 |
         | 0      | 0      | 1      |
+
         Parameters
         ----------
         test_data: {
@@ -647,10 +707,12 @@ class Trial2Vec(TrialSearchBase):
             'y': pd.DataFrame
             }
             The provided labeled dataset for test trials. Follow the format listed above.
+
         Returns
         -------
         results: dict[float]
             A dict of metrics and the values.
+
         '''
         test_df = test_data['x']
         label_df = test_data['y']
@@ -680,6 +742,7 @@ class Trial2Vec(TrialSearchBase):
         '''
         Load model and the pre-encoded trial embeddings from the given
         checkpoint dir.
+
         Parameters
         ----------
         checkpoint: str
@@ -693,7 +756,8 @@ class Trial2Vec(TrialSearchBase):
         if config_filename is not None:
             config = self._load_model_config(config_filename)
             self.config.update(config)
-        self.model = state_dict['model']
+            self.model.config.update({'fields':config['fields'], 'ctx_fields':config['ctx_fields']})
+        self.model.load_state_dict(state_dict['model'])
         self.trial_embs = state_dict['emb']
 
     def save_model(self, output_dir):
@@ -701,7 +765,7 @@ class Trial2Vec(TrialSearchBase):
         self._save_model_config(model_config=self.config, output_dir=output_dir)
         model = self._unwrap_model(self.model)
         self._save_checkpoint(
-            {'model':model,'emb':self.trial_embs},
+            {'model':model.state_dict(),'emb':self.trial_embs},
             output_dir=output_dir)
 
     def get_train_dataloader(self, inputs):
@@ -721,6 +785,7 @@ class Trial2Vec(TrialSearchBase):
     def update_emb(self, emb_dict):
         '''
         Update trial embeds: add or modify.
+
         Parameters
         ----------
         emb_dict: dict[np.ndarray]
@@ -737,7 +802,8 @@ class Trial2Vec(TrialSearchBase):
         if input_dir is None or not os.path.exists(input_dir):
             if input_dir is None:
                 input_dir = './trial_search/pretrained_trial2vec'
-                os.makedirs(input_dir)
+
+            os.makedirs(input_dir)
             print(f'Download pretrained Trial2Vec model, save to {input_dir}.')
             self._download_pretrained(output_dir=input_dir)
         
@@ -764,33 +830,25 @@ class Trial2Vec(TrialSearchBase):
     def __getitem__(self, tag):
         return self.trial_embs[tag]
 
-    def _build_model(self, train_data, val_data=None):
-        '''
-        (1) Build dataloader list;
-        (2) Build model;
-        (3) Kick off training.
-        '''
-        # build dataset
-        if 'fields' in train_data: self.attr_fields = train_data['fields']
-        if 'ctx_fields' in train_data: self.ctx_fields = train_data['ctx_fields']
-        if 'tag' in train_data: self.tag_field = train_data['tag']
-        self.config['tag_field'] = self.tag_field
-        self.config['fields'] = self.attr_fields
-        self.config['ctx_fields'] = self.ctx_fields
-
-        if val_data is not None:
-            self._build_val_docs(train_data, val_data=val_data)
-
-        # build model and loss models
+    def _build_model(self):
         model = BuildModel(
             model_name=self.config['bert_name'],
             emb_dim=self.config['emb_dim'],
             ctx_fields=self.config['ctx_fields'],
-            attr_fields=self.config['fields'],
+            fields=self.config['fields'],
             device=self.device,
         )
-
         self.model = self._wrap_model(model, self.config['device'])
+
+    def _fit(self, train_data, val_data=None):
+        # build dataset
+        if 'fields' in train_data: self.config['fields']= train_data['fields']
+        if 'ctx_fields' in train_data: self.config['ctx_fields'] = train_data['ctx_fields']
+        if 'tag' in train_data: self.config['tag_field'] = train_data['tag']
+        self.model.config.update({'fields': self.config['fields'], 'ctx_fields':self.config['ctx_fields']})
+
+        if val_data is not None:
+            self._build_val_docs(train_data, val_data=val_data)
 
         loss_models = self._build_loss_model()
 
@@ -798,13 +856,7 @@ class Trial2Vec(TrialSearchBase):
         dataloader_list = self.get_train_dataloader(train_data)
 
         # kick off training
-        self._fit(loss_models=loss_models, train_dataloader=dataloader_list, val_data=val_data)
-
-        # encode all training trial docs after training
-        self.update_emb(self.encode(train_data, return_dict=True))
-
-    def _fit(self, loss_models, train_dataloader, val_data=None):
-        train_objectives = list(zip(train_dataloader, loss_models))
+        train_objectives = list(zip(dataloader_list, loss_models))
         trainer = Trial2VecTrainer(
             model=self,
             train_objectives=train_objectives,
@@ -816,12 +868,15 @@ class Trial2Vec(TrialSearchBase):
             **self.config,
         )
 
+        # encode all training trial docs after training
+        self.update_emb(self.encode(train_data, return_dict=True))
+
     def _build_collator(self, is_train=True):
         collator_list = [
             LocalMatchCollator(
                 bert_name=self.config['bert_name'],
                 max_seq_length=self.config['max_seq_length'],
-                attr_fields=self.config['fields'],
+                fields=self.config['fields'],
                 ctx_fields=self.config['ctx_fields'],
                 device=self.config['device'],
                 is_train=is_train,
@@ -830,7 +885,7 @@ class Trial2Vec(TrialSearchBase):
             GlobalMatchCollator(
                 bert_name=self.config['bert_name'],
                 max_seq_length=self.config['max_seq_length'],
-                attr_fields=self.config['fields'],
+                fields=self.config['fields'],
                 ctx_fields=self.config['ctx_fields'],
                 device=self.config['device'],
                 is_train=is_train,
@@ -875,14 +930,21 @@ class Trial2Vec(TrialSearchBase):
 
     def _dataset_transform(self, examples):
         return_dict = {}
-        if self.attr_fields is not None:
-            for k in self.attr_fields: return_dict[k] = examples[k]
-        if self.ctx_fields is not None:
-            for k in self.ctx_fields: return_dict[k] = examples[k]
-        if self.tag_field is not None:
-            return_dict[self.tag_field] = examples[self.tag_field]
+
+        if self.config['fields'] is not None:
+            for k in self.config['fields']: 
+                return_dict[k] = examples[k]
+        
+        if self.config['ctx_fields'] is not None:
+            for k in self.config['ctx_fields']: 
+                return_dict[k] = examples[k]
+
+        if self.config['tag_field'] is not None:
+            return_dict[self.config['tag_field'] ] = examples[self.config['tag_field'] ]
+
         if len(return_dict) == 0:
             return_dict = examples
+
         return return_dict
 
     def _build_loss_model(self):
@@ -890,8 +952,8 @@ class Trial2Vec(TrialSearchBase):
         Build two loss models for training trial2vec from scratch.
         '''
         loss_models = [
-            LocalMatchLoss(model=self.model, attr_fields=self.attr_fields, logit_scale_init_value=self.config['logit_scale_init_value']),
-            GlobalMatchLoss(model=self.model, attr_fields=self.attr_fields, logit_scale_init_value=self.config['logit_scale_init_value']),
+            LocalMatchLoss(model=self.model, fields=self.config['fields'], logit_scale_init_value=self.config['logit_scale_init_value']),
+            GlobalMatchLoss(model=self.model, fields=self.config['fields'], logit_scale_init_value=self.config['logit_scale_init_value']),
         ]
         return loss_models
 
@@ -899,6 +961,8 @@ class Trial2Vec(TrialSearchBase):
         return self._dataset_transform(examples=examples)
 
     def _build_val_dataset(self, df):
+
+
         dataset = Dataset.from_pandas(df)
         dataset.set_transform(self._val_dataset_transform)
         return dataset
@@ -918,7 +982,7 @@ class Trial2Vec(TrialSearchBase):
         return LocalMatchCollator(
             bert_name=self.config['bert_name'],
             max_seq_length=self.config['max_seq_length'],
-            attr_fields=self.config['fields'],
+            fields=self.config['fields'],
             ctx_fields=self.config['ctx_fields'],
             device=self.config['device'],
             is_train=False,
@@ -932,7 +996,7 @@ class Trial2Vec(TrialSearchBase):
         tag_field = self.config['tag_field']
         tag_field = tag_field if tag_field is not None else 'tag'
         df_va = pd.DataFrame({tag_field: df_va.to_numpy().flatten()}).drop_duplicates().reset_index(drop=True)
-        df_va = df_va.merge(df_tr, on='nct_id', how='inner')
+        df_va = df_va.merge(df_tr, on=tag_field, how='inner')
         self.val_doc_inputs = {
             'x':df_va,
         }
@@ -942,6 +1006,7 @@ class Trial2Vec(TrialSearchBase):
         Check the training / testing data fits the formats.
         Target to (1) check if inputs valid,
                     if not, give tips about the data problem.
+
         Parameters
         ----------
         inputs: {
@@ -958,7 +1023,7 @@ class Trial2Vec(TrialSearchBase):
             try:
                 _ = df[inputs['fields']]
             except:
-                raise Exception('Cannot find the specified `attr_fields` in inputs dataframe.')
+                raise Exception('Cannot find the specified `fields` in inputs dataframe.')
         if 'ctx_fields' in inputs:
             try:
                 _ = df[inputs['ctx_fields']]
