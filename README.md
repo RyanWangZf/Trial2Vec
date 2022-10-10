@@ -1,4 +1,9 @@
 # Trial2Vec
+[![PyPI version](https://badge.fury.io/py/transtab.svg)](https://badge.fury.io/py/trial2vec)
+[![Downloads](https://pepy.tech/badge/trial2vec)](https://pepy.tech/project/trial2vec)
+![GitHub Repo stars](https://img.shields.io/github/stars/ryanwangzf/trial2vec)
+![GitHub Repo forks](https://img.shields.io/github/forks/ryanwangzf/trial2vec)
+
 Wang, Zifeng and Sun, Jimeng. (2022). Trial2Vec: Zero-Shot Clinical Trial Document Similarity Search using Self-Supervision. Findings of EMNLP'22.
 
 # Usage
