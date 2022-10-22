@@ -799,10 +799,10 @@ class Trial2Vec(TrialSearchBase):
         '''
         Download pretrained Trial2Vec model.
         '''
-        if input_dir is None or not os.path.exists(input_dir):
-            if input_dir is None:
-                input_dir = './trial_search/pretrained_trial2vec'
+        if input_dir is None:
+            input_dir = './trial_search/pretrained_trial2vec'
 
+        if not os.path.exists(input_dir):
             os.makedirs(input_dir)
             print(f'Download pretrained Trial2Vec model, save to {input_dir}.')
             self._download_pretrained(output_dir=input_dir)
