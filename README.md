@@ -41,7 +41,7 @@ Install the correct `PyTorch` version by referring to https://pytorch.org/get-st
 Then install `Trial2Vec` by
 
 ```bash
-
+# Recommended becaust it is update to date, small bugs will be kept fixed
 pip install git+https://github.com/RyanWangZf/Trial2Vec.git
 
 ```
