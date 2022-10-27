@@ -128,6 +128,20 @@ class BuildModel(nn.Module):
             return embs
         else:
             return emb_list
+    
+    def _encode_text(self, inputs):
+        # encode tokenized texts into embeddings
+        inputs = batch_to_device(inputs, self.device)
+        res = self.base_encoder(**inputs, return_dict=True)
+        temp_emb = self.local_proj_head(res['pooler_output'])
+        return temp_emb
+    
+    def _encode_word(self, inputs):
+        # encode tokenized words into embeddings
+        inputs = batch_to_device(inputs, self.device)
+        res = self.base_encoder(**inputs, return_dict=True)
+        temp_emb = self.local_proj_head(res['last_hidden_state'])
+        return temp_emb
 
 class LocalMatchCollator(TrialSearchCollator):
     def __init__(self,
@@ -612,6 +626,63 @@ class Trial2Vec(TrialSearchBase):
             return embs
         else:
             return (tag_list, embs)
+
+    def sentence_vector(self, inputs, no_grad=True):
+        '''
+        Encode input sentence or list of sentences.
+
+        Parameters
+        ----------
+        inputs: str or List[str]
+            Input sentence(s).
+        
+        no_grad: bool
+            Whether to use torch.no_grad() or not. If set False, the Trial2Vec model can be updated using the output embeddings.
+        
+        Returns
+        -------
+        embs: np
+        '''
+        if isinstance(inputs, str):
+            inputs = [inputs]
+        inputs = self.tokenizer(inputs, padding=True, truncation=True, return_tensors='pt')
+        if no_grad:
+            with torch.no_grad():
+                outputs = self.model._encode_text(inputs)
+        else:
+            outputs = self.model._encode_text(inputs)
+        return outputs
+    
+    def word_vector(self, inputs, no_grad=True):
+        '''
+        Encode input sentence or list of sentences into word embeddings.
+        
+        Parameters
+        ----------
+        inputs: str or List[str]
+            A sentence that you want to get word-level embeddings. The model will return a **dict** of word-level embeddings and 
+            the corresponding mask.
+        
+        no_grad: bool
+            Whether to use torch.no_grad() or not. If set False, the Trial2Vec model can be updated using the output embeddings.
+            
+        Returns
+        -------
+        outputs: dict
+            A dict of word-level embeddings and the corresponding mask.
+        '''
+        if isinstance(inputs, str):
+            inputs = [inputs]
+
+        inputs = self.tokenizer(inputs, padding=True, truncation=True, return_tensors='pt')
+        if no_grad:
+            with torch.no_grad():
+                outputs = self.model._encode_word(inputs)
+        else:
+            outputs = self.model._encode_word(inputs)
+        
+        outputs = {'word_embs': outputs, 'mask': inputs['attention_mask']}
+        return outputs
 
     def predict(self,
         test_data,
