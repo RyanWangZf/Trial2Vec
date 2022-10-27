@@ -13,7 +13,7 @@ with open(os.path.join(this_directory, 'requirements.txt'),
 
 setuptools.setup(
     name = 'Trial2Vec',
-    version = '0.0.2',
+    version = '0.0.3',
     author = 'Zifeng Wang',
     author_email = 'zifengw2@illinois.edu',
     description = 'Pretrained BERT models for encoding clinical trial documents to compact embeddings.',

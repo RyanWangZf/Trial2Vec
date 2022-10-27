@@ -645,7 +645,7 @@ class Trial2Vec(TrialSearchBase):
         '''
         if isinstance(inputs, str):
             inputs = [inputs]
-        inputs = self.tokenizer(inputs, padding=True, truncation=True, return_tensors='pt')
+        inputs = self.tokenizer(inputs, padding=True, truncation=True, return_tensors='pt', max_length=self.config['max_seq_length'])
         if no_grad:
             with torch.no_grad():
                 outputs = self.model._encode_text(inputs)
@@ -674,7 +674,7 @@ class Trial2Vec(TrialSearchBase):
         if isinstance(inputs, str):
             inputs = [inputs]
 
-        inputs = self.tokenizer(inputs, padding=True, truncation=True, return_tensors='pt')
+        inputs = self.tokenizer(inputs, padding=True, truncation=True, return_tensors='pt', max_length=self.config['max_seq_length'])
         if no_grad:
             with torch.no_grad():
                 outputs = self.model._encode_word(inputs)
