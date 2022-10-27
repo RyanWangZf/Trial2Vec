@@ -6,6 +6,22 @@
 
 Wang, Zifeng and Sun, Jimeng. (2022). Trial2Vec: Zero-Shot Clinical Trial Document Similarity Search using Self-Supervision. Findings of EMNLP'22.
 
+# Update 10/27/2022
+Support `word_vector` and `sentence_vector`!
+```python
+# sentence vectors
+inputs = ['I am a sentence', 'I am another sentence']
+outputs = model.sentence_vector(inputs)
+# torch.tensor w/ shape [2, 128]
+```
+
+```python
+# word vectors
+inputs = ['I am a sentence', 'I am another sentence abcdefg xyz']
+outputs = model.word_vector(inputs)
+# {'word_embs': torch.tensor w/ shape [2, max_token, 128], 'mask': torch.tensor w/ shape [2, max_token]}
+```
+
 # Usage
 Get pretrained Trial2Vec model in three lines:
 
