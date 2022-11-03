@@ -129,11 +129,14 @@ class BuildModel(nn.Module):
         else:
             return emb_list
     
-    def _encode_text(self, inputs):
+    def _encode_text(self, inputs, projection):
         # encode tokenized texts into embeddings
         inputs = batch_to_device(inputs, self.device)
         res = self.base_encoder(**inputs, return_dict=True)
-        temp_emb = self.local_proj_head(res['pooler_output'])
+        if projection:
+            temp_emb = self.local_proj_head(res['pooler_output'])
+        else:
+            temp_emb = res['pooler_output']
         return temp_emb
     
     def _encode_word(self, inputs):
@@ -627,7 +630,7 @@ class Trial2Vec(TrialSearchBase):
         else:
             return (tag_list, embs)
 
-    def sentence_vector(self, inputs, no_grad=True):
+    def sentence_vector(self, inputs, no_grad=True, projection=True):
         '''
         Encode input sentence or list of sentences.
 
@@ -639,6 +642,10 @@ class Trial2Vec(TrialSearchBase):
         no_grad: bool
             Whether to use torch.no_grad() or not. If set False, the Trial2Vec model can be updated using the output embeddings.
         
+        projection: bool
+            Whether to project the sentence embeddings to the same space as the trial embeddings.
+            Before projection, dim=768. After projection, dim=128.
+        
         Returns
         -------
         embs: np
@@ -648,9 +655,9 @@ class Trial2Vec(TrialSearchBase):
         inputs = self.tokenizer(inputs, padding=True, truncation=True, return_tensors='pt', max_length=self.config['max_seq_length'])
         if no_grad:
             with torch.no_grad():
-                outputs = self.model._encode_text(inputs)
+                outputs = self.model._encode_text(inputs, projection=projection)
         else:
-            outputs = self.model._encode_text(inputs)
+            outputs = self.model._encode_text(inputs, projection=projection)
         return outputs
     
     def word_vector(self, inputs, no_grad=True):
