@@ -28,7 +28,8 @@ from .data import TrialSearchCollator, batch_to_device
 from .metrics import precision, recall, ndcg
 
 # may be changed later
-PRETRAINED_TRIAL2VEC_URL = 'https://uofi.box.com/shared/static/wmvi33l3ne4hl88lui0h0v2l2j75smyb.zip'
+# PRETRAINED_TRIAL2VEC_URL = 'https://uofi.box.com/shared/static/wmvi33l3ne4hl88lui0h0v2l2j75smyb.zip'
+PRETRAINED_TRIAL2VEC_URL = 'https://storage.googleapis.com/pytrial/trial2vec_pretrained.zip'
 
 class BuildModel(nn.Module):
     config = {}
