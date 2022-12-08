@@ -8,6 +8,8 @@ import math
 from collections import defaultdict
 import random
 
+
+from sklearn.neighbors import NearestNeighbors
 from torch.cuda.amp import autocast
 import pandas as pd
 import numpy as np
@@ -1143,3 +1145,107 @@ class Trial2Vec(TrialSearchBase):
         zipf = zipfile.ZipFile(filename, 'r')
         zipf.extractall(output_dir)
         zipf.close()
+
+class Trial2VecEmbedding:
+    def __init__(self, trial_embs) -> None:
+        self.trial_embs = trial_embs
+        self.knn = None
+
+    def build_knn(self, n_neighbors=10):
+        '''
+        Build a KNN model for the embeddings.
+
+        Parameters
+        ----------
+        n_neighbors: int
+            The number of neighbors to be returned.
+        '''
+        self.knn = NearestNeighbors(n_neighbors=n_neighbors, metric='cosine')
+        self.knn.fit(np.array(list(self.trial_embs.values())))
+
+    def search_topk(self, tag, k=10):
+        '''
+        Find similar trials using KNN model.
+
+        Parameters
+        ----------
+        tag: list[str] or str
+            The tag to be looked up in the model.
+        
+        k: int
+            The number of neighbors to be returned.
+        '''
+        if self.knn is None:
+            print('knn model is not built, building now...')
+            self.build_knn(n_neighbors=k)
+        
+        if isinstance(tag, str):
+            tag = [tag]
+
+        for t in tag:
+            assert t in self.trial_embs, f'The trial {t} is not found in the pretrained embeddings!'
+        
+        trial_embs = np.array([self.trial_embs[t] for t in tag])
+        pred = self.knn.kneighbors(trial_embs, return_distance=False)
+        pred_tags = []
+        for p in pred:
+            pred_tags.append([list(self.trial_embs.keys())[i] for i in p])
+        pred_tags = np.array(pred_tags)
+        if len(pred_tags) == 1:
+            pred_tags = pred_tags[0]
+        return pred_tags
+
+    def keys(self):
+        return self.trial_embs.keys()
+
+    def __len__(self):
+        return len(self.trial_embs)
+
+    def __getitem__(self, tag):
+        '''
+        Get the embeddings of documents by the trial tags.
+
+        Parameters
+        ----------
+        tag: str, int, list[str], list[int]
+            The tag (or tags) to be looked up in the model.
+
+        Returns
+        -------
+        The embeddings of each document.
+        '''
+        if isinstance(tag, str):
+            tag = [tag]
+        
+        embs = []
+        for t in tag:
+            assert t in self.trial_embs, f'The trial {t} is not found in the pretrained embeddings!'
+            embs.append(self.trial_embs[t])
+        
+        if len(embs) == 1:
+            return embs[0]
+        else:
+            return np.stack(embs)
+
+def download_embedding():
+    '''
+    Download the pretrained Trial2Vec model and only keep the embeddings and the indexer.
+
+    Returns
+    -------
+    trial2vec_embs: Trial2VecEmbedding
+        The embeddings of the pretrained Trial2Vec model.
+        Can be used to retrieve similar trials directly
+        or to initialize a new model for further training.
+    '''
+    import copy
+    model = Trial2Vec(device='cpu')
+    model.from_pretrained()
+    trial_embs = copy.deepcopy(model.trial_embs)
+    # remove the cache occupied by the model
+    del model
+    if torch.cuda.is_available():
+        # clean up GPU memory
+        torch.cuda.empty_cache()
+    trial2vec_embs = Trial2VecEmbedding(trial_embs)
+    return trial2vec_embs

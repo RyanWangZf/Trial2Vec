@@ -6,8 +6,15 @@
 
 Wang, Zifeng and Sun, Jimeng. (2022). Trial2Vec: Zero-Shot Clinical Trial Document Similarity Search using Self-Supervision. Findings of EMNLP'22.
 
-# Update 10/27/2022
-Support `word_vector` and `sentence_vector`!
+# News
+- 12/8/2022: Support `download_embedding` that obtains the pretrained embedding only. It saves a lot of GPU/CPU memory! Please refer this [example](example/demo_download_embedding.ipynb) for detailed use cases.
+
+```python
+from trial2vec import download_embedding
+t2v_emb = download_embedding()
+```
+
+- 10/27/2022: Support `word_vector` and `sentence_vector`!
 ```python
 # sentence vectors
 inputs = ['I am a sentence', 'I am another sentence']
@@ -21,6 +28,7 @@ inputs = ['I am a sentence', 'I am another sentence abcdefg xyz']
 outputs = model.word_vector(inputs)
 # {'word_embs': torch.tensor w/ shape [2, max_token, 128], 'mask': torch.tensor w/ shape [2, max_token]}
 ```
+
 
 # Usage
 Get pretrained Trial2Vec model in three lines:

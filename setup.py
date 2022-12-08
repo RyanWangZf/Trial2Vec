@@ -13,7 +13,7 @@ with open(os.path.join(this_directory, 'requirements.txt'),
 
 setuptools.setup(
     name = 'Trial2Vec',
-    version = '0.0.3',
+    version = '0.0.4',
     author = 'Zifeng Wang',
     author_email = 'zifengw2@illinois.edu',
     description = 'Pretrained BERT models for encoding clinical trial documents to compact embeddings.',
@@ -25,6 +25,7 @@ setuptools.setup(
     install_requires=requirements,
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "License :: OSI Approved :: BSD License",
