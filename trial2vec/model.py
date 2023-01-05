@@ -833,7 +833,7 @@ class Trial2Vec(TrialSearchBase):
         '''
         checkpoint_filename = check_checkpoint_file(checkpoint)
         config_filename = check_model_config_file(checkpoint)
-        state_dict = torch.load(checkpoint_filename)
+        state_dict = torch.load(checkpoint_filename, map_location=self.device)
         if config_filename is not None:
             config = self._load_model_config(config_filename)
             self.config.update(config)
