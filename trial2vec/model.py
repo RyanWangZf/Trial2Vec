@@ -1118,7 +1118,7 @@ class Trial2Vec(TrialSearchBase):
 
         # check data type
         try:
-            _ = df.applymap(str)
+            _ = df.map(str)
         except:
             raise Exception('Cannot transform the input dataframe to str type, please check the inputs.')
 
