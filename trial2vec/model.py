@@ -838,7 +838,7 @@ class Trial2Vec(TrialSearchBase):
             config = self._load_model_config(config_filename)
             self.config.update(config)
             self.model.config.update({'fields':config['fields'], 'ctx_fields':config['ctx_fields']})
-        self.model.load_state_dict(state_dict['model'])
+        self.model.load_state_dict(state_dict['model'], strict=False)
         self.trial_embs = state_dict['emb']
 
     def save_model(self, output_dir):
